@@ -1,22 +1,24 @@
-import smtplib
-from email.mime.text import MIMEText
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+
 def send_otp_email(to_email, otp):
-    sender = os.getenv("GMAIL_ADDRESS")
-    password = os.getenv("GMAIL_APP_PASSWORD")
-
-    message = MIMEText(f"Your OTP is: {otp}")
-    message["Subject"] = "Your Voting App OTP"
-    message["From"] = sender
-    message["To"] = to_email
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(sender, password)
-        server.sendmail(sender, to_email, message.as_string())
-
-if __name__ == "__main__":
-    send_otp_email("devkhadria@gmail.com", "123456")
+    message = Mail(
+        from_email=os.getenv("SENDER_EMAIL"),
+        to_emails=to_email,
+        subject="Your Voting App OTP",
+        plain_text_content=f"Your OTP is: {otp}"
+    )
+    sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
+    try:
+        response = sg.send(message)
+        print("Status code:", response.status_code)
+        print("Body:", response.body)
+    except Exception as e:
+        print("SendGrid error:", e)
+        if hasattr(e, 'body'):
+            print("Error body:", e.body)
