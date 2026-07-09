@@ -16,6 +16,10 @@ def generate_otp():
     return str(random.randint(100000, 999999))
 
 from fastapi import FastAPI
+from fastapi import WebSocket, WebSocketDisconnect
+
+
+connected_clients=[]
 
 app = FastAPI()
 
@@ -24,7 +28,27 @@ def read_root():
     return {"message": "Hello from the backend!"}
 
 
-from pydantic import BaseModel
+
+
+@app.websocket("/wb")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept() 
+    connected_clients.append(websocket)
+    try: 
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        connected_clients.remove(websocket)
+
+
+async def broadcast_teams():
+    conn=get_connection()
+    cursor=conn.cursor()
+    cursor.execute("SELECT * FROM teams")
+    p=cursor.fetchall()
+    conn.close()
+    for i in connected_clients:
+        await i.send_json(p)
 
 @app.get("/teams")
 def get_teams():
@@ -55,7 +79,7 @@ def insert_person(name,age):
     return 0
 
 @app.post("/vote/{email}/{team_id}")
-def vote(email: str, team_id: int):
+async def vote(email: str, team_id: int):
     conn=get_connection()
     cursor=conn.cursor()
 
@@ -70,6 +94,7 @@ def vote(email: str, team_id: int):
     cursor.execute("INSERT INTO voted_emails (email,id) VALUES (%s,%s)", (email,team_id))
     conn.commit()
     conn.close()
+    await broadcast_teams()
     return {"success":True}
 
 
