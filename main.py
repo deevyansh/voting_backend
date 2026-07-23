@@ -6,6 +6,11 @@ from email_utils import send_otp_email
 from dotenv import load_dotenv
 load_dotenv()
 
+import redis
+import json
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+
 def get_connection():
     conn = psycopg2.connect(os.getenv("DATABASE_URL"), cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
@@ -52,12 +57,18 @@ async def broadcast_teams():
 
 @app.get("/teams")
 def get_teams():
-    conn=get_connection()
-    cursor=conn.cursor()
-    cursor.execute("SELECT * FROM teams")
-    p=cursor.fetchall()
-    conn.close()
-    return p
+    cache=r.get("teams")
+    if cache is None:
+        conn=get_connection()
+        cursor=conn.cursor()
+        cursor.execute("SELECT * FROM teams")
+        p=cursor.fetchall()
+        conn.close()
+        r.set("teams",json.dumps(p))
+        return p
+    else:
+        print("This time it is returned by the Cache, saving the time and memory usage")
+        return json.loads(cache)
 
 
 @app.get("/persons")
@@ -82,7 +93,7 @@ def insert_person(name,age):
 async def vote(email: str, team_id: int):
     conn=get_connection()
     cursor=conn.cursor()
-
+    r.delete("teams")
     cursor.execute("SELECT * FROM voted_emails WHERE email = %s", (email,))
     existing=cursor.fetchone()
     if existing is not None:
@@ -130,4 +141,14 @@ def verify_otp(email: str, code: str):
     else:
         conn.close()
         return {"Verified":True}
+    
+
+@app.post("/remove")
+def remove():
+    conn=get_connection()
+    cursor=conn.cursor()
+    cursor.execute("DELETE FROM voted_emails")
+    conn.commit()
+    conn.close()
+    return {"Done": True}
     
